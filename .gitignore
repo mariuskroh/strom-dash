@@ -1,0 +1,5 @@
+.DS_Store
+
+# Personal meter readings and settings, created on first start
+data/
+*.tmp
