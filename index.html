@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stromzähler</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23121211'/%3E%3Cpath d='M18 5 9 18h6l-2 9 10-14h-6z' fill='%23f6f5f1'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --ink: #121211;
+    --ink-2: #4c4a45;
+    --muted: #6e6b64;
+    --rule: #d9d5cc;
+    --rule-soft: #e7e4dc;
+    --bar: #e2ded4;
+    --bar-now: #c4beb1;
+    --down-bg: #ddf2e4; --down-ink: #0a6a35;
+    --up-bg: #fbe3e1;   --up-ink: #b0222a;
+    --flat-bg: #e8e6df; --flat-ink: #514f49;
+    --sans: "Suisse Int'l", "Suisse Intl", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "Suisse Int'l Mono", "Suisse Intl Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --gutter: clamp(16px, 4vw, 48px);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 400 15px/1.45 var(--sans);
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  }
+  .page { max-width: 1200px; margin: 0 auto; padding: 28px var(--gutter) 72px; }
+  h1, h2, h3, p { margin: 0; }
+  .n { font-variant-numeric: tabular-nums; }
+  .u { color: var(--muted); font-size: .8em; margin-left: .25em; }
+
+  /* Masthead */
+  .eyebrow { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; color: var(--ink-2); padding-bottom: 12px; border-bottom: 1px solid var(--ink); }
+  .eyebrow h1 { font-size: 13px; font-weight: 500; color: var(--ink); letter-spacing: .01em; }
+  .mast { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px 64px; align-items: end; padding-top: 48px; }
+  .lede { font-size: clamp(30px, 5vw, 62px); line-height: 1.04; letter-spacing: -.035em; font-weight: 300; color: var(--ink-2); max-width: 15em; text-wrap: balance; }
+  .lede b { font-weight: 400; color: var(--ink); }
+  .lede-meta { margin-top: 18px; font: 12px/1.4 var(--mono); color: var(--muted); letter-spacing: .02em; }
+
+  .meter { text-align: right; }
+  .meter-label { font-size: 13px; color: var(--ink-2); margin-bottom: 10px; }
+  .digits { display: inline-flex; align-items: stretch; border: 1px solid var(--ink); border-radius: 6px; overflow: hidden; background: #fff; }
+  .digits span { width: 1.15em; padding: .14em 0 .1em; text-align: center; font: 400 30px/1 var(--mono); border-left: 1px solid var(--rule); }
+  .digits span:first-child { border-left: 0; }
+  .digits span.lead { color: #bdb8ad; }
+  .digits span.dec { background: var(--ink); color: var(--bg); border-left-color: var(--ink); }
+  .meter-unit { font: 12px var(--mono); color: var(--muted); margin-top: 8px; letter-spacing: .02em; }
+
+  /* Stat tiles */
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 64px; border-top: 1px solid var(--ink); }
+  .tile { padding: 14px 20px 8px; border-left: 1px solid var(--rule); }
+  .tile:first-child { border-left: 0; padding-left: 0; }
+  .tile h3 { font-size: 13px; font-weight: 400; color: var(--ink-2); margin-bottom: 36px; }
+  .value { font-size: clamp(30px, 3.6vw, 48px); line-height: 1; letter-spacing: -.035em; font-weight: 300; white-space: nowrap; }
+  .value .u { font-size: .4em; letter-spacing: 0; font-weight: 400; margin-left: .3em; }
+  .sub { font-size: 13px; color: var(--muted); margin-top: 12px; white-space: pre-line; }
+
+  /* Blocks */
+  .block { margin-top: 88px; }
+  .block-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 24px; border-top: 1px solid var(--ink); padding-top: 14px; margin-bottom: 28px; }
+  .block-head h2 { font-size: 22px; font-weight: 400; letter-spacing: -.015em; }
+  .block-head p { font-size: 13px; color: var(--muted); }
+  .empty { color: var(--muted); padding: 24px 0; }
+
+  /* Chart */
+  .chart { position: relative; min-height: 120px; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart .grid { stroke: var(--rule-soft); stroke-width: 1; shape-rendering: crispEdges; }
+  .chart .base { stroke: var(--ink); stroke-width: 1; shape-rendering: crispEdges; }
+  .chart .avg { stroke: var(--ink-2); stroke-width: 1; shape-rendering: crispEdges; }
+  .chart .tick { font: 11px var(--mono); fill: var(--muted); }
+  .chart .cap { font: 400 13px var(--sans); fill: var(--ink); font-variant-numeric: tabular-nums; }
+  .chart .avg-label { font: 500 12px var(--sans); fill: var(--ink); }
+  .chart .bar { fill: var(--bar); }
+  .chart .bar.now { fill: var(--bar-now); }
+  .chart .level { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+  .chart .hit { fill: transparent; outline: none; }
+  .chart .hit:hover, .chart .hit:focus-visible { fill: rgba(18, 18, 17, .045); }
+  .chart .hit:focus-visible { stroke: var(--ink); stroke-width: 1; }
+  .tip { position: absolute; left: 0; top: 0; pointer-events: none; transform: translate(-50%, calc(-100% - 10px)); background: var(--ink); color: var(--bg); font-size: 12px; line-height: 1.45; padding: 8px 11px; border-radius: 6px; white-space: nowrap; opacity: 0; transition: opacity .12s; }
+  .tip.on { opacity: 1; }
+  .tip b { font-weight: 500; }
+
+  /* Period table */
+  .periods { width: 100%; border-collapse: collapse; }
+  .periods th { font-size: 12px; font-weight: 400; color: var(--muted); text-align: left; padding: 0 0 12px; border-bottom: 1px solid var(--rule); }
+  .periods td { padding: 20px 0; border-bottom: 1px solid var(--rule-soft); font-size: 16px; vertical-align: middle; }
+  .periods .n { text-align: right; padding-left: 16px; }
+  .periods tbody tr:hover td { background: rgba(255, 255, 255, .55); }
+  .idx { display: inline-block; width: 2.6em; font: 11px var(--mono); color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: .4em; padding: 4px 10px 4px 8px; border-radius: 999px; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill i { font-style: normal; font-size: .72em; }
+  .pill.down { background: var(--down-bg); color: var(--down-ink); }
+  .pill.up { background: var(--up-bg); color: var(--up-ink); }
+  .pill.flat { background: var(--flat-bg); color: var(--flat-ink); }
+  .none { color: var(--muted); }
+
+  /* Lower panels */
+  .lower { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 48px; }
+  .lower .block-head h2 { font-size: 18px; }
+  .field { display: block; margin-bottom: 22px; }
+  .field > span:first-child { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+  .input-unit { display: flex; align-items: baseline; gap: 8px; border-bottom: 1px solid var(--ink-2); }
+  .input-unit:focus-within { box-shadow: 0 1px 0 var(--ink); border-bottom-color: var(--ink); }
+  .input-unit em { font-style: normal; color: var(--muted); font-size: 14px; }
+  input { font: 400 22px/1.2 var(--sans); letter-spacing: -.01em; color: var(--ink); background: transparent; border: 0; padding: 8px 0; width: 100%; min-width: 0; outline: none; border-radius: 0; }
+  input[type="date"] { border-bottom: 1px solid var(--ink-2); min-height: 44px; }
+  input[type="date"]:focus { box-shadow: 0 1px 0 var(--ink); border-bottom-color: var(--ink); }
+  input::placeholder { color: #aaa59a; }
+  .btn { font: 500 15px var(--sans); color: var(--bg); background: var(--ink); border: 1px solid var(--ink); border-radius: 999px; padding: 12px 24px; min-height: 44px; cursor: pointer; }
+  .btn:hover { background: #2e2d2a; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn.ghost:hover { background: rgba(18, 18, 17, .06); }
+  .btn:focus-visible, .link:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .msg { font-size: 14px; margin-top: 16px; min-height: 1.45em; }
+  .msg.error { color: var(--up-ink); }
+  .msg.ok { color: var(--down-ink); }
+  .msg.warn { color: var(--ink); background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; }
+  .msg .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .msg .actions .btn { padding: 8px 16px; min-height: 36px; font-size: 14px; }
+
+  .readings { list-style: none; margin: 0; padding: 0; }
+  .readings li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule-soft); font-size: 15px; }
+  .readings li:first-child { padding-top: 0; }
+  .link { font: 13px var(--sans); color: var(--muted); background: none; border: 0; padding: 8px 0 8px 8px; min-height: 36px; cursor: pointer; border-radius: 4px; }
+  .link:hover { color: var(--up-ink); }
+  .link.armed { color: var(--up-ink); font-weight: 500; }
+
+  footer { margin-top: 96px; padding-top: 14px; border-top: 1px solid var(--rule); font: 12px/1.5 var(--mono); color: var(--muted); letter-spacing: .02em; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; }
+
+  @media (max-width: 960px) {
+    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tile:nth-child(3) { border-left: 0; padding-left: 0; }
+    .tile:nth-child(n+3) { border-top: 1px solid var(--rule); margin-top: 20px; }
+    .lower { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 720px) {
+    .mast { grid-template-columns: 1fr; padding-top: 36px; }
+    .meter { text-align: left; }
+    .digits span { font-size: 26px; }
+    .block { margin-top: 64px; }
+    .lower { grid-template-columns: 1fr; }
+    .periods thead { display: none; }
+    .periods tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 12px; padding: 16px 0; border-bottom: 1px solid var(--rule-soft); }
+    .periods td { padding: 0; border: 0; font-size: 15px; }
+    .periods .n { text-align: left; padding-left: 0; }
+    .periods td.range { grid-column: 1 / 4; align-self: center; }
+    .periods td.trend { grid-column: 4; grid-row: 1; text-align: right; }
+    .periods td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+    .periods tbody tr:hover td { background: none; }
+    .idx { width: 2.2em; }
+  }
+  @media (max-width: 340px) {
+    .tiles { grid-template-columns: 1fr; }
+    .tile { border-left: 0; padding-left: 0; }
+    .tile:nth-child(n+2) { border-top: 1px solid var(--rule); margin-top: 20px; }
+    .tile h3 { margin-bottom: 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="eyebrow">
+    <h1>Stromzähler</h1>
+    <span id="today"></span>
+  </div>
+
+  <header class="mast">
+    <div>
+      <p class="lede" id="lede">Lade Daten …</p>
+      <p class="lede-meta" id="lede-meta"></p>
+    </div>
+    <div class="meter" id="meter" hidden>
+      <p class="meter-label" id="meter-label"></p>
+      <div class="digits" id="digits" role="img"></div>
+      <p class="meter-unit">kWh</p>
+    </div>
+  </header>
+
+  <section class="tiles" aria-label="Kennzahlen">
+    <div class="tile"><h3>Ø pro Tag</h3><p class="value" id="t-day">—</p><p class="sub" id="t-day-sub"></p></div>
+    <div class="tile"><h3>Ø pro Monat (30 Tage)</h3><p class="value" id="t-month">—</p><p class="sub">Ø pro Tag × 30</p></div>
+    <div class="tile"><h3>Hochrechnung Jahr</h3><p class="value" id="t-year">—</p><p class="sub">Ø pro Tag × 365</p></div>
+    <div class="tile"><h3>Geschätzte Kosten/Monat</h3><p class="value" id="t-cost">—</p><p class="sub" id="t-cost-sub"></p></div>
+  </section>
+
+  <section class="block" aria-labelledby="chart-title">
+    <div class="block-head">
+      <h2 id="chart-title">Verbrauch pro Tag</h2>
+      <p>Breite = Dauer des Zeitraums · Höhe = Ø kWh pro Tag</p>
+    </div>
+    <div class="chart" id="chart"></div>
+  </section>
+
+  <section class="block" aria-labelledby="table-title">
+    <div class="block-head">
+      <h2 id="table-title">Zeiträume</h2>
+      <p>Trend: Ø/Tag im Vergleich zum Zeitraum davor</p>
+    </div>
+    <table class="periods">
+      <thead>
+        <tr><th>Zeitraum</th><th class="n">Tage</th><th class="n">Verbrauch</th><th class="n">Ø/Tag</th><th class="n">Ø/Monat</th><th class="n">Trend</th></tr>
+      </thead>
+      <tbody id="periods"></tbody>
+    </table>
+  </section>
+
+  <div class="lower">
+    <section class="block" aria-labelledby="entry-title">
+      <div class="block-head"><h2 id="entry-title">Neue Ablesung</h2></div>
+      <form id="entry" novalidate autocomplete="off">
+        <label class="field"><span>Datum</span><input type="date" id="f-date" required></label>
+        <label class="field"><span>Zählerstand</span>
+          <span class="input-unit"><input id="f-kwh" inputmode="decimal" placeholder="z. B. 2.512" required><em>kWh</em></span>
+        </label>
+        <button class="btn" type="submit">Eintragen</button>
+        <div class="msg" id="entry-msg" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="block" aria-labelledby="list-title">
+      <div class="block-head"><h2 id="list-title">Ablesungen</h2><p id="list-count"></p></div>
+      <ol class="readings" id="readings"></ol>
+      <div class="msg" id="list-msg" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="block" aria-labelledby="settings-title">
+      <div class="block-head"><h2 id="settings-title">Einstellungen</h2></div>
+      <form id="settings" novalidate autocomplete="off">
+        <label class="field"><span>Preis pro kWh</span>
+          <span class="input-unit"><input id="s-price" inputmode="decimal"><em>€</em></span>
+        </label>
+        <label class="field"><span>Grundgebühr pro Monat</span>
+          <span class="input-unit"><input id="s-base" inputmode="decimal"><em>€</em></span>
+        </label>
+        <button class="btn ghost" type="submit">Speichern</button>
+        <div class="msg" id="settings-msg" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+  </div>
+
+  <footer>
+    <span>Daten: data/readings.json · data/settings.json</span>
+    <span>Lokal gespeichert, nicht im Browser</span>
+  </footer>
+</div>
+
+<script>
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+const state = { readings: [], settings: { pricePerKwh: 0, baseFeePerMonth: 0 }, view: null };
+
+// ---------- formatting (German) ----------
+
+const formats = {};
+function num(n, min = 0, max = min) {
+  const key = `${min}-${max}`;
+  formats[key] ||= new Intl.NumberFormat('de-DE', { minimumFractionDigits: min, maximumFractionDigits: max });
+  return formats[key].format(n);
+}
+const kwhText = (n) => num(n, 0, 1);
+const euro = (n) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
+const dateDE = (iso) => iso.split('-').reverse().join('.');
+const dayMonth = (iso) => dateDE(iso).slice(0, 6);
+const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+function todayIso() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+// Accepts "2512", "2512,5", "2.512", "2.512,5" and "2512.5".
+// With thousands=false a lone dot is always the decimal point (for prices).
+function parseNumber(input, thousands = true) {
+  let s = String(input).trim().replace(/\s|kwh|€/gi, '');
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (thousands && /^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+}
+
+// ---------- calculations ----------
+
+function analyze(readings, settings) {
+  const sorted = [...readings].sort((a, b) => a.date.localeCompare(b.date));
+  const periods = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const from = sorted[i - 1], to = sorted[i];
+    const days = daysBetween(from.date, to.date);
+    const used = to.kwh - from.kwh;
+    const perDay = used / days;
+    const prev = periods[i - 2];
+    periods.push({
+      from: from.date, to: to.date, days, used, perDay, per30: perDay * 30,
+      trend: prev && prev.perDay > 0 ? (perDay / prev.perDay - 1) * 100 : null,
+    });
+  }
+
+  let overall = null;
+  if (periods.length) {
+    const first = sorted[0], last = sorted.at(-1);
+    const days = daysBetween(first.date, last.date);
+    const perDay = (last.kwh - first.kwh) / days;
+    const perYear = perDay * 365;
+    const costYear = perYear * settings.pricePerKwh + settings.baseFeePerMonth * 12;
+    overall = { from: first.date, days, perDay, per30: perDay * 30, perYear, costYear, costMonth: costYear / 12 };
+  }
+  return { sorted, periods, overall };
+}
+
+// Inverted vs. crypto: less consumption is good.
+function trendOf(pct) {
+  if (pct == null) return null;
+  const abs = `${num(Math.abs(pct), 1)} %`;
+  if (Math.abs(pct) < 0.5) return { cls: 'flat', sym: '≈', abs, phrase: 'etwa so viel wie' };
+  return pct < 0
+    ? { cls: 'down', sym: '▼', abs, phrase: `${abs} weniger als` }
+    : { cls: 'up', sym: '▲', abs, phrase: `${abs} mehr als` };
+}
+
+function pill(pct) {
+  const t = trendOf(pct);
+  if (!t) return '<span class="none" title="Kein vorheriger Zeitraum">—</span>';
+  return `<span class="pill ${t.cls}" title="${t.phrase} im Zeitraum davor"><i aria-hidden="true">${t.sym}</i>${t.abs}</span>`;
+}
+
+// ---------- rendering ----------
+
+function render() {
+  const view = analyze(state.readings, state.settings);
+  state.view = view;
+  renderMast(view);
+  renderTiles(view);
+  renderChart(view);
+  renderTable(view);
+  renderReadings(view);
+}
+
+function renderMast({ sorted, periods }) {
+  const lede = $('lede'), meta = $('lede-meta');
+  const latest = periods.at(-1);
+  if (!sorted.length) {
+    lede.textContent = 'Noch keine Ablesungen. Den ersten Zählerstand unten eintragen.';
+    meta.textContent = '';
+  } else if (!latest) {
+    lede.textContent = 'Erste Ablesung gespeichert. Ab der zweiten gibt es Verbrauchswerte.';
+    meta.textContent = '';
+  } else {
+    const t = trendOf(latest.trend);
+    const tail = t ? `, <b>${t.phrase}</b> im Zeitraum davor.` : '.';
+    lede.innerHTML = `Zuletzt <b>${num(latest.perDay, 2)} kWh</b> pro Tag${tail}`;
+    meta.textContent = `${dateDE(latest.from)} – ${dateDE(latest.to)} · ${latest.days} Tage · ${kwhText(latest.used)} kWh`;
+  }
+
+  const last = sorted.at(-1);
+  $('meter').hidden = !last;
+  if (!last) return;
+  $('meter-label').textContent = `Zählerstand am ${dateDE(last.date)}`;
+  const [int, dec = '0'] = last.kwh.toFixed(1).split('.');
+  const padded = int.padStart(6, '0');
+  const leadZeros = padded.length - int.length;
+  $('digits').innerHTML = [...padded].map((d, i) => `<span${i < leadZeros ? ' class="lead"' : ''}>${d}</span>`).join('')
+    + `<span class="dec">${dec}</span>`;
+  $('digits').setAttribute('aria-label', `${kwhText(last.kwh)} kWh`);
+}
+
+function renderTiles({ overall }) {
+  const value = (n, digits, unit) => `${num(n, digits)}<span class="u">${unit}</span>`;
+  const { pricePerKwh, baseFeePerMonth } = state.settings;
+  if (!overall) {
+    for (const id of ['t-day', 't-month', 't-year', 't-cost']) $(id).textContent = '—';
+    $('t-day-sub').textContent = 'ab zwei Ablesungen';
+    $('t-cost-sub').textContent = '';
+    return;
+  }
+  $('t-day').innerHTML = value(overall.perDay, 2, 'kWh');
+  $('t-day-sub').textContent = `seit ${dateDE(overall.from)} · ${overall.days} Tage`;
+  $('t-month').innerHTML = value(overall.per30, 1, 'kWh');
+  $('t-year').innerHTML = value(overall.perYear, 0, 'kWh');
+  $('t-cost').innerHTML = `${num(overall.costMonth, 2)}<span class="u">€</span>`;
+  $('t-cost-sub').textContent = `${euro(overall.costYear)} im Jahr\n${num(pricePerKwh, 2, 4)} €/kWh · ${num(baseFeePerMonth, 2)} € Grundgebühr`;
+}
+
+function niceStep(raw) {
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / pow;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * pow;
+}
+
+function renderChart({ periods, overall }) {
+  const box = $('chart');
+  if (!periods.length) {
+    box.innerHTML = '<p class="empty">Ab zwei Ablesungen erscheint hier das Diagramm.</p>';
+    return;
+  }
+
+  const W = Math.max(box.clientWidth, 280);
+  const H = W < 560 ? 220 : 280;
+  const pad = { top: 28, right: 64, bottom: 34, left: 36 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+  const maxV = Math.max(...periods.map((p) => p.perDay), overall.perDay);
+  const step = niceStep(maxV / 5 || 1);
+  const yMax = Math.ceil(maxV / step) * step;
+  const y = (v) => pad.top + plotH - (v / yMax) * plotH;
+  const totalDays = periods.reduce((s, p) => s + p.days, 0);
+  const x = (d) => pad.left + (d / totalDays) * plotW;
+  const base = y(0);
+  const out = [];
+
+  for (let v = step; v <= yMax + 1e-9; v += step) {
+    out.push(`<line class="grid" x1="${pad.left}" x2="${W - pad.right}" y1="${y(v)}" y2="${y(v)}"/>`,
+      `<text class="tick" x="0" y="${y(v) + 4}">${num(v, step < 1 ? 1 : 0)}</text>`);
+  }
+  out.push(`<text class="tick" x="0" y="${base + 4}">0</text>`);
+
+  let acc = 0;
+  const bounds = [0];
+  const hits = [];
+  const ay = y(overall.perDay);
+  periods.forEach((p, i) => {
+    const x0 = x(acc) + 1, x1 = x(acc + p.days) - 1;
+    acc += p.days;
+    bounds.push(acc);
+    const w = Math.max(x1 - x0, 1), top = y(p.perDay), h = base - top;
+    const r = Math.min(4, w / 2, h);
+    const cap = `M${x0},${top + r}Q${x0},${top} ${x0 + r},${top}H${x0 + w - r}Q${x0 + w},${top} ${x0 + w},${top + r}`;
+    out.push(`<path class="bar${i === periods.length - 1 ? ' now' : ''}" d="M${x0},${base}V${top + r}${cap.slice(cap.indexOf('Q'))}V${base}Z"/>`,
+      `<path class="level" d="${cap}"/>`);
+    // Value on the cap; drop it inside the bar when the average line would cross it.
+    if (w >= 52) {
+      const crosses = (ly) => ay > ly - 15 && ay < ly + 5;
+      const ly = crosses(top - 9) && h > 34 ? top + 20 : top - 9;
+      if (!crosses(ly)) out.push(`<text class="cap" x="${x0 + w / 2}" y="${ly}" text-anchor="middle">${num(p.perDay, 2)}</text>`);
+    }
+    hits.push(`<rect class="hit" data-i="${i}" data-top="${top}" x="${x0}" y="${pad.top}" width="${w}" height="${plotH}" tabindex="0" aria-label="${dateDE(p.from)} bis ${dateDE(p.to)}: ${num(p.perDay, 2)} kWh pro Tag"/>`);
+  });
+
+  out.push(`<line class="base" x1="${pad.left}" x2="${W - pad.right}" y1="${base}" y2="${base}"/>`);
+  out.push(`<line class="avg" x1="${pad.left}" x2="${W - pad.right + 6}" y1="${ay}" y2="${ay}"/>`,
+    `<text class="avg-label" x="${W - pad.right + 10}" y="${ay + 4}">Ø ${num(overall.perDay, 2)}</text>`);
+
+  // Date labels at period boundaries: first and last always, the rest where they fit.
+  const dates = [periods[0].from, ...periods.map((p) => p.to)];
+  const placed = [];
+  const fits = (a, b) => placed.every(([c, d]) => b + 10 < c || a - 10 > d);
+  const label = (i, anchor) => {
+    const text = i === 0 || i === dates.length - 1 ? dateDE(dates[i]) : dayMonth(dates[i]);
+    const width = text.length * 6.7, bx = x(bounds[i]);
+    const [a, b] = anchor === 'start' ? [bx, bx + width] : anchor === 'end' ? [bx - width, bx] : [bx - width / 2, bx + width / 2];
+    if (!fits(a, b)) return;
+    placed.push([a, b]);
+    out.push(`<line class="base" x1="${bx}" x2="${bx}" y1="${base}" y2="${base + 5}"/>`,
+      `<text class="tick" x="${bx}" y="${base + 20}" text-anchor="${anchor}">${text}</text>`);
+  };
+  label(0, 'start');
+  label(dates.length - 1, 'end');
+  for (let i = 1; i < dates.length - 1; i++) label(i, 'middle');
+
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Säulendiagramm: Ø kWh pro Tag je Zeitraum. Werte stehen auch in der Tabelle Zeiträume.">${out.join('')}${hits.join('')}</svg><div class="tip" id="tip" aria-hidden="true"></div>`;
+}
+
+function showTip(rect) {
+  const p = state.view.periods[rect.dataset.i];
+  const tip = $('tip');
+  tip.innerHTML = `<b>${dateDE(p.from)} – ${dateDE(p.to)}</b><br>${num(p.perDay, 2)} kWh/Tag · ${kwhText(p.used)} kWh · ${p.days} Tage`;
+  const box = $('chart').getBoundingClientRect();
+  const r = rect.getBoundingClientRect();
+  const half = tip.offsetWidth / 2;
+  const cx = Math.min(Math.max(r.left - box.left + r.width / 2, half), box.width - half);
+  tip.style.left = `${cx}px`;
+  tip.style.top = `${rect.dataset.top}px`;
+  tip.classList.add('on');
+}
+
+function renderTable({ periods }) {
+  const body = $('periods');
+  if (!periods.length) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">Noch kein Zeitraum – dafür braucht es zwei Ablesungen.</td></tr>';
+    return;
+  }
+  body.innerHTML = periods.map((p, i) => `
+    <tr>
+      <td class="range"><span class="idx">${String(i + 1).padStart(2, '0')}</span>${dateDE(p.from)} – ${dateDE(p.to)}</td>
+      <td class="n" data-label="Tage">${p.days}</td>
+      <td class="n" data-label="Verbrauch">${kwhText(p.used)}<span class="u">kWh</span></td>
+      <td class="n" data-label="Ø/Tag">${num(p.perDay, 2)}<span class="u">kWh</span></td>
+      <td class="n" data-label="Ø/Monat">${num(p.per30, 1)}<span class="u">kWh</span></td>
+      <td class="n trend">${pill(p.trend)}</td>
+    </tr>`).reverse().join('');
+}
+
+function renderReadings({ sorted }) {
+  $('list-count').textContent = sorted.length === 1 ? '1 Eintrag' : `${sorted.length} Einträge`;
+  $('readings').innerHTML = sorted.length
+    ? [...sorted].reverse().map((r) => `
+      <li>
+        <span class="n">${dateDE(r.date)}</span>
+        <span class="n">${kwhText(r.kwh)}<span class="u">kWh</span></span>
+        <button type="button" class="link del" data-date="${r.date}" aria-label="Ablesung vom ${dateDE(r.date)} löschen">Löschen</button>
+      </li>`).join('')
+    : '<li class="empty">Noch keine Ablesungen.</li>';
+}
+
+function fillSettings() {
+  $('s-price').value = num(state.settings.pricePerKwh, 2, 4);
+  $('s-base').value = num(state.settings.baseFeePerMonth, 2);
+}
+
+// ---------- messages & api ----------
+
+function say(el, kind, text, actions = []) {
+  el.className = `msg ${kind}`;
+  el.textContent = text;
+  if (actions.length) {
+    const row = document.createElement('div');
+    row.className = 'actions';
+    for (const [label, onClick, cls] of actions) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `btn ${cls || ''}`;
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      row.append(b);
+    }
+    el.append(row);
+  }
+}
+const clearMsg = (el) => { el.className = 'msg'; el.textContent = ''; };
+
+async function api(method, url, body) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('Server nicht erreichbar. Läuft start.command noch?');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || `Fehler ${res.status}`), { status: res.status });
+  return data;
+}
+
+// ---------- entry form ----------
+
+async function saveReading(date, kwh, replace) {
+  const msg = $('entry-msg');
+  try {
+    state.readings = await api('POST', '/api/readings', { date, kwh, replace });
+    $('f-kwh').value = '';
+    render();
+    say(msg, 'ok', `Eingetragen: ${dateDE(date)} · ${kwhText(kwh)} kWh`);
+  } catch (err) {
+    say(msg, 'error', err.message);
+  }
+}
+
+$('entry').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const msg = $('entry-msg');
+  const date = $('f-date').value;
+  const kwh = parseNumber($('f-kwh').value);
+
+  if (!date) return say(msg, 'error', 'Bitte ein Datum wählen.');
+  if (date > todayIso()) return say(msg, 'error', 'Das Datum liegt in der Zukunft.');
+  if (!(kwh > 0)) return say(msg, 'error', 'Bitte den Zählerstand in kWh eingeben, z. B. 2.512 oder 2512,5.');
+
+  const { sorted } = state.view;
+  const prev = sorted.filter((r) => r.date < date).at(-1);
+  const next = sorted.find((r) => r.date > date);
+  if (prev && kwh <= prev.kwh) {
+    return say(msg, 'error', `Der Zählerstand muss höher sein als der vorherige: ${kwhText(prev.kwh)} kWh am ${dateDE(prev.date)}.`);
+  }
+  if (next && kwh >= next.kwh) {
+    return say(msg, 'error', `Der Zählerstand muss niedriger sein als der folgende: ${kwhText(next.kwh)} kWh am ${dateDE(next.date)}.`);
+  }
+
+  const dup = sorted.find((r) => r.date === date);
+  if (dup && dup.kwh === kwh) {
+    return say(msg, 'warn', `Diese Ablesung ist schon eingetragen: ${dateDE(date)} · ${kwhText(kwh)} kWh.`);
+  }
+  if (dup) {
+    return say(msg, 'warn', `Für den ${dateDE(date)} gibt es schon einen Eintrag (${kwhText(dup.kwh)} kWh). Durch ${kwhText(kwh)} kWh ersetzen?`, [
+      ['Ersetzen', () => saveReading(date, kwh, true)],
+      ['Abbrechen', () => clearMsg(msg), 'ghost'],
+    ]);
+  }
+  saveReading(date, kwh, false);
+});
+
+$('entry').addEventListener('input', () => clearMsg($('entry-msg')));
+
+// ---------- delete (two-step confirm) ----------
+
+function disarm(btn) {
+  clearTimeout(btn._timer);
+  btn.classList.remove('armed');
+  btn.textContent = 'Löschen';
+  btn.setAttribute('aria-label', `Ablesung vom ${dateDE(btn.dataset.date)} löschen`);
+}
+
+$('readings').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.del');
+  if (!btn) return;
+  const { date } = btn.dataset;
+  const msg = $('list-msg');
+
+  if (!btn.classList.contains('armed')) {
+    document.querySelectorAll('.del.armed').forEach(disarm);
+    btn.classList.add('armed');
+    btn.textContent = 'Wirklich löschen?';
+    btn.setAttribute('aria-label', `Löschen der Ablesung vom ${dateDE(date)} bestätigen`);
+    btn._timer = setTimeout(() => disarm(btn), 4000);
+    return;
+  }
+
+  disarm(btn);
+  const removed = state.readings.find((r) => r.date === date);
+  try {
+    state.readings = await api('DELETE', `/api/readings/${date}`);
+    render();
+    say(msg, 'ok', `Gelöscht: ${dateDE(date)}${removed ? ` · ${kwhText(removed.kwh)} kWh` : ''}`);
+  } catch (err) {
+    say(msg, 'error', err.message);
+  }
+});
+
+// ---------- settings ----------
+
+$('settings').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('settings-msg');
+  const pricePerKwh = parseNumber($('s-price').value, false);
+  const baseFeePerMonth = parseNumber($('s-base').value, false);
+  if (!(pricePerKwh >= 0) || !(baseFeePerMonth >= 0)) {
+    return say(msg, 'error', 'Bitte gültige Beträge eingeben, z. B. 0,35.');
+  }
+  try {
+    state.settings = await api('PUT', '/api/settings', { pricePerKwh, baseFeePerMonth });
+    fillSettings();
+    render();
+    say(msg, 'ok', 'Gespeichert.');
+  } catch (err) {
+    say(msg, 'error', err.message);
+  }
+});
+$('settings').addEventListener('input', () => clearMsg($('settings-msg')));
+
+// ---------- chart hover ----------
+
+const chart = $('chart');
+const onTip = (e) => { if (e.target.classList?.contains('hit')) showTip(e.target); };
+const offTip = (e) => { if (e.target.classList?.contains('hit')) $('tip')?.classList.remove('on'); };
+chart.addEventListener('pointerover', onTip);
+chart.addEventListener('focusin', onTip);
+chart.addEventListener('pointerout', offTip);
+chart.addEventListener('focusout', offTip);
+
+let lastWidth = 0;
+new ResizeObserver(([entry]) => {
+  const w = Math.round(entry.contentRect.width);
+  if (state.view && w !== lastWidth) { lastWidth = w; renderChart(state.view); }
+}).observe(chart);
+
+// ---------- start ----------
+
+$('today').textContent = `Heute, ${dateDE(todayIso())}`;
+$('f-date').value = todayIso();
+$('f-date').max = todayIso();
+
+Promise.all([api('GET', '/api/readings'), api('GET', '/api/settings')])
+  .then(([readings, settings]) => {
+    state.readings = readings;
+    state.settings = settings;
+    fillSettings();
+    render();
+  })
+  .catch((err) => {
+    $('lede').textContent = err.message;
+  });
+</script>
+</body>
+</html>
